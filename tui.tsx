@@ -39,6 +39,14 @@ const MIN_ROW = 12
 const MAX_ID = 30
 
 /**
+ * How long the widget waits for the workspace default model before rendering
+ * without it. The catalog is already loaded at that point, so the lookup is
+ * enrichment: gating the whole widget on it means a slow or stalled request
+ * leaves the sidebar on "loading…" with no way to recover.
+ */
+export const DEFAULT_LOOKUP_MS = 1500
+
+/**
  * Usable content width for a measured sidebar width. `avail` is 0 until the
  * first layout pass lands, in which case the fallback keeps today's layout.
  */
@@ -123,9 +131,14 @@ export default Plugin.define({
           ...metrics(m.cost as CostTier[] | undefined),
         }))
       const sessionCurrent = resolveCurrentModel(ctx, sid)
+      // Never gate the widget on the current-model lookup: the rows are already
+      // loaded, so bound the workspace-default request and render regardless.
       const current = sessionCurrent
         ? { data: sessionCurrent }
-        : await ctx.client.model.default().catch(() => undefined)
+        : await Promise.race([
+            ctx.client.model.default().catch(() => undefined),
+            new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), DEFAULT_LOOKUP_MS)),
+          ])
       return { rows, current }
     }
 
