@@ -11,7 +11,7 @@ vi.mock("opencode-plugin-kit", async (importOriginal) => ({
 import { createComponent, createRoot, type JSX } from "solid-js"
 import { render } from "solid-js/web"
 import { PluginContextProvider } from "@opencode/plugin/tui"
-import tuiPlugin, { buildFilters, budgetFor, columnFor } from "../tui.js"
+import tuiPlugin, { buildFilters, budgetFor, columnFor, DEFAULT_LOOKUP_MS } from "../tui.js"
 
 const paid = (input: number, output: number, read: number) => [{ input, output, cache: { read } }]
 
@@ -244,6 +244,27 @@ describe("Picks sidebar widget", () => {
     expect(rows.length).toBeGreaterThan(0)
     for (const l of rows) expect(l.length).toBeLessThanOrEqual(budget)
   })
+
+  test(
+    "renders the picks when the default-model lookup never settles",
+    async () => {
+      const f = await setupTui({
+        messages: [],
+        // A client whose model.default() never settles: the widget must not stay
+        // on "loading…" waiting for enrichment it does not need to draw rows.
+        defaultModel: () => new Promise(() => {}),
+      })
+      const t = mountPicks(f, "s1")
+      expect(text(t)).toContain("model picks: loading…")
+      await vi.waitFor(() => expect(text(t)).toContain("MODEL PICKS"), { timeout: DEFAULT_LOOKUP_MS * 4 })
+      const s = text(t)
+      expect(s).toContain("sess$ cheap (zen) $0.26")
+      expect(s).toContain("basis")
+      // Rendered without a current model rather than not at all.
+      expect(s).not.toContain("now ")
+    },
+    DEFAULT_LOOKUP_MS * 4,
+  )
 
   test("marks the cheapest current model as matching the session", async () => {
     const f = await setupTui({
